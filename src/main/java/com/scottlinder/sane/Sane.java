@@ -15,18 +15,23 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.entity.VillagerCareerChangeEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.view.*;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
+import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class Sane extends JavaPlugin implements Listener {
@@ -43,6 +48,12 @@ public final class Sane extends JavaPlugin implements Listener {
     static final int TOWN_DIM_Y = 50;
     static final int TOWN_DIM_Z = 250;
 
+    static final Permission PACIFIER = new Permission(
+        "sane.pacifier",
+        "Player will never draw aggro from hostile mobs",
+        PermissionDefault.FALSE
+    );
+
     Server server;
     BlockData airData;
 
@@ -50,7 +61,9 @@ public final class Sane extends JavaPlugin implements Listener {
     public void onEnable() {
         server = getServer();
         airData = server.createBlockData(Material.AIR);
-        server.getPluginManager().registerEvents(this, this);
+        PluginManager pluginManager = server.getPluginManager();
+        pluginManager.registerEvents(this, this);
+        pluginManager.addPermission(PACIFIER);
         addReverseRecipes();
     }
 
@@ -384,5 +397,60 @@ public final class Sane extends JavaPlugin implements Listener {
         addReverseSlabRecipes();
         addReverseStairsRecipes();
         addReverseWallRecipes();
+    }
+
+    static final Set<EntityType> Hostiles = Set.of(
+        EntityType.BLAZE,
+        EntityType.BOGGED,
+        EntityType.BREEZE,
+        EntityType.CAVE_SPIDER,
+        EntityType.CREAKING,
+        EntityType.CREEPER,
+        EntityType.DROWNED,
+        EntityType.ELDER_GUARDIAN,
+        EntityType.ENDER_DRAGON,
+        EntityType.ENDERMAN,
+        EntityType.ENDERMITE,
+        EntityType.EVOKER,
+        EntityType.GHAST,
+        EntityType.GUARDIAN,
+        EntityType.HOGLIN,
+        EntityType.HUSK,
+        EntityType.MAGMA_CUBE,
+        EntityType.PHANTOM,
+        EntityType.PIGLIN,
+        EntityType.PIGLIN_BRUTE,
+        EntityType.PILLAGER,
+        EntityType.RAVAGER,
+        EntityType.SHULKER,
+        EntityType.SILVERFISH,
+        EntityType.SKELETON,
+        EntityType.SLIME,
+        EntityType.SPIDER,
+        EntityType.STRAY,
+        EntityType.VEX,
+        EntityType.VINDICATOR,
+        EntityType.WARDEN,
+        EntityType.WITCH,
+        EntityType.WITHER,
+        EntityType.WITHER_SKELETON,
+        EntityType.WITHER_SKULL,
+        EntityType.ZOGLIN,
+        EntityType.ZOMBIE,
+        EntityType.ZOMBIFIED_PIGLIN,
+        EntityType.ZOMBIE_VILLAGER
+    );
+
+    public boolean isHostile(Entity entity) {
+        return Hostiles.contains(entity.getType());
+    }
+
+    @EventHandler
+    public void onEntityTargetEvent(EntityTargetEvent targetEvent) {
+        Entity entity = targetEvent.getEntity();
+        Entity target = targetEvent.getTarget();
+        if (target instanceof Player && target.hasPermission(PACIFIER) && isHostile(entity)) {
+            targetEvent.setCancelled(true);
+        }
     }
 }
