@@ -4,17 +4,21 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.*;
+import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.entity.VillagerCareerChangeEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -26,11 +30,17 @@ import org.bukkit.permissions.Permission;
 import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.projectiles.ProjectileSource;
+import org.bukkit.scheduler.BukkitScheduler;
+
+import io.papermc.paper.util.Tick;
 
 import java.text.MessageFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,23 +58,36 @@ public final class Sane extends JavaPlugin implements Listener {
     static final int TOWN_DIM_Y = 50;
     static final int TOWN_DIM_Z = 250;
 
-    static final Permission PACIFIER = new Permission(
-        "sane.pacifier",
+    static final Permission PACIFIER_COMPLETE = new Permission(
+        "sane.pacifier.complete",
         "Player will never draw aggro from hostile mobs",
         PermissionDefault.FALSE
     );
+    static final Permission PACIFIER_COOLDOWN = new Permission(
+        "sane.pacifier.cooldown",
+        "Player will not draw aggro from hostile mobs except for during a brief cooldown after attacking one",
+        PermissionDefault.FALSE
+    );
+    static final long PACIFIER_AGGRO_TICKS = Tick.tick().fromDuration(Duration.ofSeconds(10));
+    static final long PACIFIER_CLEANUP_PERIOD_TICKS  = Tick.tick().fromDuration(Duration.ofSeconds(1));
 
     Server server;
     BlockData airData;
+    Map<Player, Long> playerLastDamageTick;
 
     @Override
     public void onEnable() {
         server = getServer();
         airData = server.createBlockData(Material.AIR);
+        playerLastDamageTick = new HashMap<Player, Long>();
         PluginManager pluginManager = server.getPluginManager();
         pluginManager.registerEvents(this, this);
-        pluginManager.addPermission(PACIFIER);
+        pluginManager.addPermission(PACIFIER_COMPLETE);
+        pluginManager.addPermission(PACIFIER_COOLDOWN);
         addReverseRecipes();
+        server.getScheduler().runTaskTimer(this, () -> {
+            doPacifierCleanup();
+        }, PACIFIER_CLEANUP_PERIOD_TICKS, PACIFIER_CLEANUP_PERIOD_TICKS);
     }
 
     @Override
@@ -399,58 +422,69 @@ public final class Sane extends JavaPlugin implements Listener {
         addReverseWallRecipes();
     }
 
-    static final Set<EntityType> Hostiles = Set.of(
-        EntityType.BLAZE,
-        EntityType.BOGGED,
-        EntityType.BREEZE,
-        EntityType.CAVE_SPIDER,
-        EntityType.CREAKING,
-        EntityType.CREEPER,
-        EntityType.DROWNED,
-        EntityType.ELDER_GUARDIAN,
-        EntityType.ENDER_DRAGON,
-        EntityType.ENDERMAN,
-        EntityType.ENDERMITE,
-        EntityType.EVOKER,
-        EntityType.GHAST,
-        EntityType.GUARDIAN,
-        EntityType.HOGLIN,
-        EntityType.HUSK,
-        EntityType.MAGMA_CUBE,
-        EntityType.PHANTOM,
-        EntityType.PIGLIN,
-        EntityType.PIGLIN_BRUTE,
-        EntityType.PILLAGER,
-        EntityType.RAVAGER,
-        EntityType.SHULKER,
-        EntityType.SILVERFISH,
-        EntityType.SKELETON,
-        EntityType.SLIME,
-        EntityType.SPIDER,
-        EntityType.STRAY,
-        EntityType.VEX,
-        EntityType.VINDICATOR,
-        EntityType.WARDEN,
-        EntityType.WITCH,
-        EntityType.WITHER,
-        EntityType.WITHER_SKELETON,
-        EntityType.WITHER_SKULL,
-        EntityType.ZOGLIN,
-        EntityType.ZOMBIE,
-        EntityType.ZOMBIFIED_PIGLIN,
-        EntityType.ZOMBIE_VILLAGER
-    );
+    public long getCurrentTick(Player player) {
+        return player.getWorld().getFullTime();
+    }
 
-    public boolean isHostile(Entity entity) {
-        return Hostiles.contains(entity.getType());
+    public boolean canMobsAttack(Player player) {
+        if (player.hasPermission(PACIFIER_COMPLETE))
+            return false;
+        if (!player.hasPermission(PACIFIER_COOLDOWN))
+            return true;
+        Long lastDamageTick = playerLastDamageTick.get(player);
+        Long currentTick = getCurrentTick(player);
+        if (lastDamageTick == null)
+            return false;
+        return (currentTick - lastDamageTick) < PACIFIER_AGGRO_TICKS;
     }
 
     @EventHandler
     public void onEntityTargetEvent(EntityTargetEvent targetEvent) {
         Entity entity = targetEvent.getEntity();
         Entity target = targetEvent.getTarget();
-        if (target instanceof Player && target.hasPermission(PACIFIER) && isHostile(entity)) {
+        if (entity instanceof Monster monster
+                && target instanceof Player player
+                && !canMobsAttack(player)) {
             targetEvent.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onEntityDamageByEntityEvent(EntityDamageByEntityEvent damageEvent) {
+        Entity entity = damageEvent.getEntity();
+        Entity damager = damageEvent.getDamager();
+        if (damager instanceof Projectile projectile) {
+            if (projectile.getShooter() instanceof Entity e) {
+                damager = e;
+            } else {
+                return;
+            }
+        }
+        if (damager instanceof Player player
+                && entity instanceof Monster monster
+                && player.hasPermission(PACIFIER_COOLDOWN)) {
+            playerLastDamageTick.put(player, getCurrentTick(player));
+        } else if (damager instanceof Monster monster
+                    && entity instanceof Player player
+                    && !canMobsAttack(player)) {
+            monster.setTarget(null);
+        }
+    }
+
+    public void doPacifierCleanup() {
+        for (var entry : playerLastDamageTick.entrySet()) {
+            Player player = entry.getKey();
+            if (entry.getValue() == null)
+                continue;
+            if (!canMobsAttack(player)) {
+                entry.setValue(null);
+                for (var entity : player.getNearbyEntities(32, 10, 32)) {
+                    if (entity instanceof Monster monster) {
+                        if (monster.getTarget() == player)
+                            monster.setTarget(null);
+                    }
+                }
+            }
         }
     }
 }
