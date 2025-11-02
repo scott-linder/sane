@@ -10,7 +10,8 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.Monster;
+import org.bukkit.entity.Enemy;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Villager;
@@ -442,7 +443,7 @@ public final class Sane extends JavaPlugin implements Listener {
     public void onEntityTargetEvent(EntityTargetEvent targetEvent) {
         Entity entity = targetEvent.getEntity();
         Entity target = targetEvent.getTarget();
-        if (entity instanceof Monster monster
+        if (entity instanceof Enemy enemy
                 && target instanceof Player player
                 && !canMobsAttack(player)) {
             targetEvent.setCancelled(true);
@@ -461,13 +462,14 @@ public final class Sane extends JavaPlugin implements Listener {
             }
         }
         if (damager instanceof Player player
-                && entity instanceof Monster monster
+                && entity instanceof Enemy enemy
                 && player.hasPermission(PACIFIER_COOLDOWN)) {
             playerLastDamageTick.put(player, getCurrentTick(player));
-        } else if (damager instanceof Monster monster
+        } else if (damager instanceof Enemy enemy
+                    && enemy instanceof Mob mob
                     && entity instanceof Player player
                     && !canMobsAttack(player)) {
-            monster.setTarget(null);
+            mob.setTarget(null);
         }
     }
 
@@ -479,9 +481,10 @@ public final class Sane extends JavaPlugin implements Listener {
             if (!canMobsAttack(player)) {
                 entry.setValue(null);
                 for (var entity : player.getNearbyEntities(32, 10, 32)) {
-                    if (entity instanceof Monster monster) {
-                        if (monster.getTarget() == player)
-                            monster.setTarget(null);
+                    if (entity instanceof Enemy enemy
+                        && enemy instanceof Mob mob) {
+                        if (mob.getTarget() == player)
+                            mob.setTarget(null);
                     }
                 }
             }
