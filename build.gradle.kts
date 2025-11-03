@@ -5,6 +5,7 @@ plugins {
     id("io.papermc.paperweight.userdev") version "2.0.0-beta.19"
     id("xyz.jpenilla.run-paper") version "3.0.0"
     id("xyz.jpenilla.resource-factory-bukkit-convention") version "1.3.0"
+    id("com.diffplug.spotless") version "8.0.0"
 }
 
 group = "com.scottlinder"
@@ -34,4 +35,20 @@ bukkitPluginYaml {
   load = BukkitPluginYaml.PluginLoadOrder.STARTUP
   authors.add("Authors")
   apiVersion = paperVersion
+}
+
+spotless {
+  format("misc") {
+    target("*.gradle", "*.gradle.kts", ".gitattributes", ".gitignore")
+
+    trimTrailingWhitespace()
+    leadingTabsToSpaces()
+    endWithNewline()
+  }
+  java {
+    googleJavaFormat("1.31.0")
+        .reflowLongStrings()
+        .skipJavadocFormatting()
+    formatAnnotations()
+  }
 }
