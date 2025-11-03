@@ -90,6 +90,7 @@ public final class Sane extends JavaPlugin implements Listener {
     pluginManager.addPermission(PACIFIER_COMPLETE);
     pluginManager.addPermission(PACIFIER_COOLDOWN);
     addReverseRecipes();
+    addVeganRecipes();
     server
         .getScheduler()
         .runTaskTimer(
@@ -505,6 +506,26 @@ public final class Sane extends JavaPlugin implements Listener {
     addReverseStairsRecipes();
     addReverseWallRecipes();
   }
+
+  private void addVeganRecipes() {
+    addRecipe(
+        "vegan_mushroom_leather",
+        Material.LEATHER,
+        1,
+        "BBB",
+        "BAB",
+        "BBB",
+        Set.of(new RI('A', new MaterialChoice(Tag.WOOL)), new RI('B', Material.BROWN_MUSHROOM)));
+    addRecipe(
+        "vegan_cactus_leather",
+        Material.LEATHER,
+        1,
+        "BBB",
+        "BAB",
+        "BBB",
+        Set.of(new RI('A', new MaterialChoice(Tag.WOOL)), new RI('B', Material.CACTUS)));
+  }
+
   private long getCurrentTick(Player player) {
     return player.getWorld().getFullTime();
   }
