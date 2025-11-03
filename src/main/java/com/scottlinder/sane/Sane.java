@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import net.kyori.adventure.text.Component;
@@ -33,6 +34,7 @@ import org.bukkit.event.entity.VillagerCareerChangeEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
+import org.bukkit.inventory.RecipeChoice.MaterialChoice;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.view.*;
 import org.bukkit.permissions.Permission;
@@ -275,14 +277,48 @@ public final class Sane extends JavaPlugin implements Listener {
             });
   }
 
-  private void addReverseSlabRecipe(Material fullMat, Material slabMat) {
+  /// A keyed "RecipeIngredient", with a very compact name as it appears in
+  /// argument lists.
+  private static class RI {
+    char key;
+    Object o;
+
+    public RI(char key, Object o) {
+      this.key = key;
+      this.o = o;
+    }
+
+    public void setIn(ShapedRecipe r) {
+      if (o instanceof Material m) r.setIngredient(key, m);
+      else if (o instanceof RecipeChoice m) r.setIngredient(key, m);
+      else throw new RuntimeException("Unhandled recipe ingredient type");
+    }
+  }
+
+  private void addRecipe(
+      String key,
+      Material material,
+      int count,
+      String shapeTop,
+      String shapeMid,
+      String shapeBot,
+      Set<RI> ingredients) {
     ShapedRecipe recipe =
-        new ShapedRecipe(
-            new NamespacedKey(this, "reverse_slab_%s_%s".formatted(slabMat, fullMat)),
-            new ItemStack(fullMat, 3));
-    recipe.shape("   ", "AAA", "AAA");
-    recipe.setIngredient('A', slabMat);
+        new ShapedRecipe(new NamespacedKey(this, key), new ItemStack(material, count));
+    recipe.shape(shapeTop, shapeMid, shapeBot);
+    for (var i : ingredients) i.setIn(recipe);
     server.addRecipe(recipe);
+  }
+
+  private void addReverseSlabRecipe(Material fullMat, Material slabMat) {
+    addRecipe(
+        "reverse_slab_%s_%s".formatted(slabMat, fullMat),
+        fullMat,
+        3,
+        "   ",
+        "AAA",
+        "AAA",
+        Set.of(new RI('A', slabMat)));
   }
 
   private void addReverseSlabRecipes() {
@@ -351,13 +387,14 @@ public final class Sane extends JavaPlugin implements Listener {
   }
 
   private void addReverseStairsRecipe(Material fullMat, Material stairsMat) {
-    ShapedRecipe recipe =
-        new ShapedRecipe(
-            new NamespacedKey(this, "reverse_stairs_%s_%s".formatted(stairsMat, fullMat)),
-            new ItemStack(fullMat, 6));
-    recipe.shape("   ", "AA ", "AA ");
-    recipe.setIngredient('A', stairsMat);
-    server.addRecipe(recipe);
+    addRecipe(
+        "reverse_stairs_%s_%s".formatted(stairsMat, fullMat),
+        fullMat,
+        6,
+        "   ",
+        "AA ",
+        "AA ",
+        Set.of(new RI('A', stairsMat)));
   }
 
   private void addReverseStairsRecipes() {
@@ -424,13 +461,14 @@ public final class Sane extends JavaPlugin implements Listener {
   }
 
   private void addReverseWallRecipe(Material fullMat, Material wallMat) {
-    ShapedRecipe recipe =
-        new ShapedRecipe(
-            new NamespacedKey(this, "reverse_wall_%s_%s".formatted(wallMat, fullMat)),
-            new ItemStack(fullMat, 6));
-    recipe.shape("   ", "AAA", "AAA");
-    recipe.setIngredient('A', wallMat);
-    server.addRecipe(recipe);
+    addRecipe(
+        "reverse_wall_%s_%s".formatted(wallMat, fullMat),
+        fullMat,
+        6,
+        "   ",
+        "AAA",
+        "AAA",
+        Set.of(new RI('A', wallMat)));
   }
 
   private void addReverseWallRecipes() {
@@ -467,7 +505,6 @@ public final class Sane extends JavaPlugin implements Listener {
     addReverseStairsRecipes();
     addReverseWallRecipes();
   }
-
   private long getCurrentTick(Player player) {
     return player.getWorld().getFullTime();
   }
