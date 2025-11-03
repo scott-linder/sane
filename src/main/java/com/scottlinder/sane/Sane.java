@@ -43,38 +43,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.stream.Collectors;
 
 public final class Sane extends JavaPlugin implements Listener {
 
-    static final Material TRADE_REFRESH_MATERIAL = Material.EMERALD;
-    static final int TRADE_REFRESH_AMOUNT_PER_LEVEL = 8;
+    private static final Material TRADE_REFRESH_MATERIAL = Material.EMERALD;
+    private static final int TRADE_REFRESH_AMOUNT_PER_LEVEL = 8;
 
-    static final String ERROR_LEVEL_ONE = "You cannot bribe a villager into refreshing their level-1 trades!";
-    static final String ERROR_MUST_HOLD = "You must be holding {0} to bribe this villager into refreshing their non-level-1 trades!";
-    static final String ERROR_NOT_ENOUGH = "You must have {0} {1} to bribe this villager into refreshing their non-level-1 trades!";
-    static final String SUCCESS_YOU_SPENT = "The villager accepted your bribe of {0} {1} and refreshed their non-level-1 trades!";
+    private static final String ERROR_LEVEL_ONE = "You cannot bribe a villager into refreshing their level-1 trades!";
+    private static final String ERROR_MUST_HOLD = "You must be holding {0} to bribe this villager into refreshing their non-level-1 trades!";
+    private static final String ERROR_NOT_ENOUGH = "You must have {0} {1} to bribe this villager into refreshing their non-level-1 trades!";
+    private static final String SUCCESS_YOU_SPENT = "The villager accepted your bribe of {0} {1} and refreshed their non-level-1 trades!";
 
-    static final int TOWN_DIM_X = 250;
-    static final int TOWN_DIM_Y = 50;
-    static final int TOWN_DIM_Z = 250;
+    private static final int TOWN_DIM_X = 250;
+    private static final int TOWN_DIM_Y = 50;
+    private static final int TOWN_DIM_Z = 250;
 
-    static final Permission PACIFIER_COMPLETE = new Permission(
+    private static final Permission PACIFIER_COMPLETE = new Permission(
         "sane.pacifier.complete",
         "Player will never draw aggro from hostile mobs",
         PermissionDefault.FALSE
     );
-    static final Permission PACIFIER_COOLDOWN = new Permission(
+    private static final Permission PACIFIER_COOLDOWN = new Permission(
         "sane.pacifier.cooldown",
         "Player will not draw aggro from hostile mobs except for during a brief cooldown after attacking one",
         PermissionDefault.FALSE
     );
-    static final long PACIFIER_AGGRO_TICKS = Tick.tick().fromDuration(Duration.ofSeconds(10));
-    static final long PACIFIER_CLEANUP_PERIOD_TICKS  = Tick.tick().fromDuration(Duration.ofSeconds(1));
+    private static final long PACIFIER_AGGRO_TICKS = Tick.tick().fromDuration(Duration.ofSeconds(10));
+    private static final long PACIFIER_CLEANUP_PERIOD_TICKS  = Tick.tick().fromDuration(Duration.ofSeconds(1));
 
-    Server server;
-    BlockData airData;
-    Map<Player, Long> playerLastDamageTick;
+    private Server server;
+    private BlockData airData;
+    private Map<Player, Long> playerLastDamageTick;
 
     @Override
     public void onEnable() {
@@ -86,26 +87,26 @@ public final class Sane extends JavaPlugin implements Listener {
         pluginManager.addPermission(PACIFIER_COMPLETE);
         pluginManager.addPermission(PACIFIER_COOLDOWN);
         addReverseRecipes();
-        server.getScheduler().runTaskTimer(this, () -> {
-            doPacifierCleanup();
-        }, PACIFIER_CLEANUP_PERIOD_TICKS, PACIFIER_CLEANUP_PERIOD_TICKS);
+        server.getScheduler().runTaskTimer(this, this::doPacifierCleanup, PACIFIER_CLEANUP_PERIOD_TICKS, PACIFIER_CLEANUP_PERIOD_TICKS);
     }
 
-    @Override
-    public void onDisable() {
-        HandlerList.unregisterAll((Listener) this);
+    private static MerchantRecipe getInfiniteRecipe(MerchantRecipe recipe) {
+        MerchantRecipe mr = new MerchantRecipe(recipe.getResult(), /* uses= */0,
+                /* maxUses= */Integer.MAX_VALUE, /* experienceReward= */false);
+        recipe.getIngredients().forEach(mr::addIngredient);
+        return mr;
     }
 
-    public List<MerchantRecipe> getTownRecipes(Location location) {
-        return location.getWorld().getNearbyEntities(location, TOWN_DIM_X, TOWN_DIM_Y, TOWN_DIM_Z).stream()
+    private static Stream<MerchantRecipe> getVillagerRecipes(Villager villager) {
+        return villager.getRecipes().stream().map(Sane::getInfiniteRecipe);
+    }
+
+    private List<MerchantRecipe> getTownRecipes(Location location) {
+        return location.getWorld()
+            .getNearbyEntities(location, TOWN_DIM_X, TOWN_DIM_Y, TOWN_DIM_Z).stream()
                 .filter(e -> e.getType() == EntityType.VILLAGER)
-                .flatMap(e -> ((Villager) e).getRecipes().stream()
-                        .map(r -> {
-                            MerchantRecipe mr = new MerchantRecipe(r.getResult(), /* uses= */0,
-                                    /* maxUses= */Integer.MAX_VALUE, /* experienceReward= */false);
-                            r.getIngredients().forEach(mr::addIngredient);
-                            return mr;
-                        }))
+                .map(e -> (Villager) e)
+                .flatMap(Sane::getVillagerRecipes)
                 .toList();
     }
 
@@ -237,7 +238,7 @@ public final class Sane extends JavaPlugin implements Listener {
         });
     }
 
-    public void addReverseSlabRecipe(Material fullMat, Material slabMat) {
+    private void addReverseSlabRecipe(Material fullMat, Material slabMat) {
         ShapedRecipe recipe = new ShapedRecipe(
                 new NamespacedKey(this, "reverse_slab_%s_%s".formatted(slabMat, fullMat)),
                 new ItemStack(fullMat, 3)
@@ -247,7 +248,7 @@ public final class Sane extends JavaPlugin implements Listener {
         server.addRecipe(recipe);
     }
 
-    public void addReverseSlabRecipes() {
+    private void addReverseSlabRecipes() {
         //addReverseSlabRecipe(Material.TUFF, Material.TUFF_SLAB);
         //addReverseSlabRecipe(Material.POLISHED_TUFF, Material.POLISHED_TUFF_SLAB);
         //addReverseSlabRecipe(Material.TUFF_BRICKS, Material.TUFF_BRICK_SLAB);
@@ -309,7 +310,7 @@ public final class Sane extends JavaPlugin implements Listener {
         addReverseSlabRecipe(Material.POLISHED_BLACKSTONE_BRICKS, Material.POLISHED_BLACKSTONE_BRICK_SLAB);
     }
 
-    public void addReverseStairsRecipe(Material fullMat, Material stairsMat) {
+    private void addReverseStairsRecipe(Material fullMat, Material stairsMat) {
         ShapedRecipe recipe = new ShapedRecipe(
                 new NamespacedKey(this, "reverse_stairs_%s_%s".formatted(stairsMat, fullMat)),
                 new ItemStack(fullMat, 6)
@@ -319,7 +320,7 @@ public final class Sane extends JavaPlugin implements Listener {
         server.addRecipe(recipe);
     }
 
-    public void addReverseStairsRecipes() {
+    private void addReverseStairsRecipes() {
         //addReverseStairsRecipe(Material.TUFF, Material.TUFF_STAIRS);
         //addReverseStairsRecipe(Material.POLISHED_TUFF, Material.POLISHED_TUFF_STAIRS);
         //addReverseStairsRecipe(Material.TUFF_BRICKS, Material.TUFF_BRICK_STAIRS);
@@ -378,7 +379,7 @@ public final class Sane extends JavaPlugin implements Listener {
         addReverseStairsRecipe(Material.POLISHED_BLACKSTONE_BRICKS, Material.POLISHED_BLACKSTONE_BRICK_STAIRS);
     }
 
-    public void addReverseWallRecipe(Material fullMat, Material wallMat) {
+    private void addReverseWallRecipe(Material fullMat, Material wallMat) {
         ShapedRecipe recipe = new ShapedRecipe(
                 new NamespacedKey(this, "reverse_wall_%s_%s".formatted(wallMat, fullMat)),
                 new ItemStack(fullMat, 6)
@@ -388,7 +389,7 @@ public final class Sane extends JavaPlugin implements Listener {
         server.addRecipe(recipe);
     }
 
-    public void addReverseWallRecipes() {
+    private void addReverseWallRecipes() {
         //addReverseWallRecipe(Material.TUFF, Material.TUFF_WALL);
         //addReverseWallRecipe(Material.POLISHED_TUFF, Material.POLISHED_TUFF_WALL);
         //addReverseWallRecipe(Material.TUFF, Material.TUFF_BRICK_WALL);
@@ -417,17 +418,17 @@ public final class Sane extends JavaPlugin implements Listener {
 
     }
 
-    public void addReverseRecipes() {
+    private void addReverseRecipes() {
         addReverseSlabRecipes();
         addReverseStairsRecipes();
         addReverseWallRecipes();
     }
 
-    public long getCurrentTick(Player player) {
+    private long getCurrentTick(Player player) {
         return player.getWorld().getFullTime();
     }
 
-    public boolean canMobsAttack(Player player) {
+    private boolean canMobsAttack(Player player) {
         if (player.hasPermission(PACIFIER_COMPLETE))
             return false;
         if (!player.hasPermission(PACIFIER_COOLDOWN))
@@ -473,7 +474,7 @@ public final class Sane extends JavaPlugin implements Listener {
         }
     }
 
-    public void doPacifierCleanup() {
+    private void doPacifierCleanup() {
         for (var entry : playerLastDamageTick.entrySet()) {
             Player player = entry.getKey();
             if (entry.getValue() == null)
